@@ -1,0 +1,6 @@
+train: /content/drive/MyDrive/DL - GP/dataset/images/test
+val: /content/drive/MyDrive/DL - GP/dataset/images/train
+test: /content/drive/MyDrive/DL - GP/dataset/images/val 
+
+nc: 1
+names: ['Gun']
