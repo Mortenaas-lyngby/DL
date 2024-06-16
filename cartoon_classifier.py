@@ -94,17 +94,29 @@ def process_directory(dataset_path: Path, threshold: float):
 
         for image_path in images:
             corresponding_label_path = labels_split_path / f"{image_path.stem}.txt"
-            if not corresponding_label_path.exists():
-                logging.warning(f"Label for {image_path.name} not found.")
+            photo_image_dest = photo_images_path_split / image_path.name
+            photo_label_dest = photo_labels_path_split / corresponding_label_path.name
+            cartoon_image_dest = cartoon_images_path_split / image_path.name
+            cartoon_label_dest = cartoon_labels_path_split / corresponding_label_path.name
+
+            # Check if the image already exists in the target directories
+            if photo_image_dest.exists() or cartoon_image_dest.exists():
                 progress_bar.update(1)
                 continue
 
-            if is_cartoon(image_path, model, threshold):
-                shutil.copy(image_path, cartoon_images_path_split / image_path.name)
-                shutil.copy(corresponding_label_path, cartoon_labels_path_split / corresponding_label_path.name)
+            if corresponding_label_path.exists():
+                if is_cartoon(image_path, model, threshold):
+                    shutil.copy(image_path, cartoon_image_dest)
+                    shutil.copy(corresponding_label_path, cartoon_label_dest)
+                else:
+                    shutil.copy(image_path, photo_image_dest)
+                    shutil.copy(corresponding_label_path, photo_label_dest)
             else:
-                shutil.copy(image_path, photo_images_path_split / image_path.name)
-                shutil.copy(corresponding_label_path, photo_labels_path_split / corresponding_label_path.name)
+                logging.warning(f"Label for {image_path.name} not found.")
+                if is_cartoon(image_path, model, threshold):
+                    shutil.copy(image_path, cartoon_image_dest)
+                else:
+                    shutil.copy(image_path, photo_image_dest)
 
             progress_bar.update(1)
 
