@@ -1,55 +1,82 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 from pathlib import Path
-from typing import Union
 import shutil
 import argparse
 import numpy as np
 from tensorflow.keras.applications.resnet50 import ResNet50, preprocess_input, decode_predictions
 from tensorflow.keras.preprocessing import image
+from tqdm import tqdm
+import logging
 
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def is_cartoon(image_path: Union[str, Path], threshold: float = 0.5) -> bool:
-    model = ResNet50(weights='imagenet')
+def load_model():
+    """
+    Load the pre-trained ResNet50 model with ImageNet weights.
 
-    img = image.load_img(image_path, target_size=(224, 224))
-    x = image.img_to_array(img)
-    x = np.expand_dims(x, axis=0)
-    x = preprocess_input(x)
+    Returns:
+        model (tensorflow.keras.Model): Loaded ResNet50 model.
+    """
+    return ResNet50(weights='imagenet')
 
-    preds = model.predict(x)
-    label = decode_predictions(preds, top=1)[0][0]
-    print(f'{image_path.name}: {label}')
+def is_cartoon(img_path: Path, model, threshold: float = 0.5) -> bool:
+    """
+    Determine if an image is a cartoon using the ResNet50 model.
 
-    # Check if the top prediction is 'comic_book'
-    if label[1] == 'comic_book' and label[2] > threshold:
-        return True
-    else:
+    Args:
+        img_path (Path): Path to the image file.
+        model (tensorflow.keras.Model): Pre-trained ResNet50 model.
+        threshold (float): Confidence threshold for classification.
+
+    Returns:
+        bool: True if the image is classified as a cartoon, False otherwise.
+    """
+    try:
+        img = image.load_img(img_path, target_size=(224, 224))
+        x = image.img_to_array(img)
+        x = np.expand_dims(x, axis=0)
+        x = preprocess_input(x)
+
+        preds = model.predict(x)
+        label = decode_predictions(preds, top=1)[0][0]
+
+        # Check if the top prediction is related to 'cartoon' with confidence above threshold
+        keywords = ['comic', 'cartoon', 'animated', 'animation']
+        for keyword in keywords:
+            if keyword in label[1] and label[2] > threshold:
+                return True
+        
         return False
 
+    except Exception as e:
+        logging.error(f"Error processing image {img_path}: {str(e)}")
+        return False
 
 def process_directory(dataset_path: Path, threshold: float):
-    if dataset_path == Path('/'):
-        raise ValueError("The dataset path cannot be the root directory.")
+    """
+    Process the dataset directory to separate cartoon and photo images.
 
-    if not (dataset_path / "images").exists() or not (dataset_path / "labels").exists():
-        raise FileNotFoundError("The dataset directory must contain 'images' and 'labels' subdirectories.")
+    Args:
+        dataset_path (Path): Path to the dataset directory.
+        threshold (float): Confidence threshold for classification.
+
+    Raises:
+        FileNotFoundError: If the dataset directory does not exist.
+    """
+    if not dataset_path.exists() or not dataset_path.is_dir():
+        raise FileNotFoundError(f"No dataset directory exists at {dataset_path.absolute()}")
 
     photo_only_path = dataset_path.parent / f"{dataset_path.name}_photo_only"
     cartoon_only_path = dataset_path.parent / f"{dataset_path.name}_cartoon_only"
-    photo_images_path = photo_only_path / "images"
-    photo_labels_path = photo_only_path / "labels"
-    cartoon_images_path = cartoon_only_path / "images"
-    cartoon_labels_path = cartoon_only_path / "labels"
     
-    missing_labels = []
+    splits = ["train", "val", "test"]
+    model = load_model()
 
-    for split in ["train", "val", "test"]:
-        photo_images_path_split = photo_images_path / split
-        photo_labels_path_split = photo_labels_path / split
-        cartoon_images_path_split = cartoon_images_path / split
-        cartoon_labels_path_split = cartoon_labels_path / split
+    for split in splits:
+        photo_images_path_split = photo_only_path / "images" / split
+        photo_labels_path_split = photo_only_path / "labels" / split
+        cartoon_images_path_split = cartoon_only_path / "images" / split
+        cartoon_labels_path_split = cartoon_only_path / "labels" / split
 
         photo_images_path_split.mkdir(parents=True, exist_ok=True)
         photo_labels_path_split.mkdir(parents=True, exist_ok=True)
@@ -59,33 +86,44 @@ def process_directory(dataset_path: Path, threshold: float):
         images_split_path = dataset_path / "images" / split
         labels_split_path = dataset_path / "labels" / split
 
-        for image_path in images_split_path.glob("*.jpg"):
+        images = list(images_split_path.glob("*.jpg"))
+        total_images = len(images)
+
+        # Initialize tqdm progress bar
+        progress_bar = tqdm(total=total_images, desc=f"Processing {split} split", unit="image")
+
+        for image_path in images:
             corresponding_label_path = labels_split_path / f"{image_path.stem}.txt"
             if not corresponding_label_path.exists():
-                missing_labels.append(image_path.name)
+                logging.warning(f"Label for {image_path.name} not found.")
+                progress_bar.update(1)
                 continue
 
-            if is_cartoon(image_path, threshold):
+            if is_cartoon(image_path, model, threshold):
                 shutil.copy(image_path, cartoon_images_path_split / image_path.name)
                 shutil.copy(corresponding_label_path, cartoon_labels_path_split / corresponding_label_path.name)
             else:
                 shutil.copy(image_path, photo_images_path_split / image_path.name)
                 shutil.copy(corresponding_label_path, photo_labels_path_split / corresponding_label_path.name)
-    
-    with open(photo_only_path / 'missing_labels.txt', 'w') as file:
-        for label in missing_labels:
-            file.write(f"{label}\n")
 
-    print(f"Photo-only dataset created at: {photo_only_path}")
-    print(f"Cartoon-only dataset created at: {cartoon_only_path}")
+            progress_bar.update(1)
 
+        progress_bar.close()
+
+    logging.info(f"Photo-only dataset created at: {photo_only_path}")
+    logging.info(f"Cartoon-only dataset created at: {cartoon_only_path}")
 
 def command_line_options():
+    """
+    Parse command-line options.
+
+    Returns:
+        dict: Dictionary containing parsed command-line arguments.
+    """
     args = argparse.ArgumentParser(description="Process dataset to filter out cartoons and keep only photos.")
     args.add_argument("-t", "--threshold", type=float, help="Classification threshold (default: 0.5)", default=0.5)
     args.add_argument("dataset_path", type=Path, help="Path to the dataset directory")
     return vars(args.parse_args())
-
 
 if __name__ == "__main__":
     options = command_line_options()
