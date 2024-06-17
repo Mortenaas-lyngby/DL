@@ -8,7 +8,9 @@ from tqdm import tqdm
 import logging
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+
 
 def load_model():
     """
@@ -18,6 +20,7 @@ def load_model():
         model (tensorflow.keras.Model): Loaded ResNet50 model.
     """
     return ResNet50(weights='imagenet')
+
 
 def is_cartoon(img_path: Path, model, threshold: float = 0.5) -> bool:
     """
@@ -45,12 +48,13 @@ def is_cartoon(img_path: Path, model, threshold: float = 0.5) -> bool:
         for keyword in keywords:
             if keyword in label[1] and label[2] > threshold:
                 return True
-        
+
         return False
 
     except Exception as e:
         logging.error(f"Error processing image {img_path}: {str(e)}")
         return False
+
 
 def process_directory(dataset_path: Path, threshold: float):
     """
@@ -64,11 +68,13 @@ def process_directory(dataset_path: Path, threshold: float):
         FileNotFoundError: If the dataset directory does not exist.
     """
     if not dataset_path.exists() or not dataset_path.is_dir():
-        raise FileNotFoundError(f"No dataset directory exists at {dataset_path.absolute()}")
+        raise FileNotFoundError(
+            f"No dataset directory exists at {dataset_path.absolute()}")
 
     photo_only_path = dataset_path.parent / f"{dataset_path.name}_photo_only"
-    cartoon_only_path = dataset_path.parent / f"{dataset_path.name}_cartoon_only"
-    
+    cartoon_only_path = dataset_path.parent / \
+        f"{dataset_path.name}_cartoon_only"
+
     splits = ["train", "val", "test"]
     model = load_model()
 
@@ -90,10 +96,12 @@ def process_directory(dataset_path: Path, threshold: float):
         total_images = len(images)
 
         # Initialize tqdm progress bar
-        progress_bar = tqdm(total=total_images, desc=f"Processing {split} split", unit="image")
+        progress_bar = tqdm(total=total_images,
+                            desc=f"Processing {split} split", unit="image")
 
         for image_path in images:
-            corresponding_label_path = labels_split_path / f"{image_path.stem}.txt"
+            corresponding_label_path = labels_split_path / \
+                f"{image_path.stem}.txt"
             photo_image_dest = photo_images_path_split / image_path.name
             photo_label_dest = photo_labels_path_split / corresponding_label_path.name
             cartoon_image_dest = cartoon_images_path_split / image_path.name
@@ -125,6 +133,7 @@ def process_directory(dataset_path: Path, threshold: float):
     logging.info(f"Photo-only dataset created at: {photo_only_path}")
     logging.info(f"Cartoon-only dataset created at: {cartoon_only_path}")
 
+
 def command_line_options():
     """
     Parse command-line options.
@@ -132,14 +141,19 @@ def command_line_options():
     Returns:
         dict: Dictionary containing parsed command-line arguments.
     """
-    args = argparse.ArgumentParser(description="Process dataset to filter out cartoons and keep only photos.")
-    args.add_argument("-t", "--threshold", type=float, help="Classification threshold (default: 0.5)", default=0.5)
-    args.add_argument("dataset_path", type=Path, help="Path to the dataset directory")
+    args = argparse.ArgumentParser(
+        description="Process dataset to filter out cartoons and keep only photos.")
+    args.add_argument("-t", "--threshold", type=float,
+                      help="Classification threshold (default: 0.5)", default=0.5)
+    args.add_argument("dataset_path", type=Path,
+                      help="Path to the dataset directory")
     return vars(args.parse_args())
+
 
 if __name__ == "__main__":
     options = command_line_options()
     dataset_path = options["dataset_path"]
     if not dataset_path.exists() or not dataset_path.is_dir():
-        raise FileNotFoundError(f"No dataset directory exists at {dataset_path.absolute()}")
+        raise FileNotFoundError(
+            f"No dataset directory exists at {dataset_path.absolute()}")
     process_directory(dataset_path, options["threshold"])
